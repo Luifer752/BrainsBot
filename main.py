@@ -29,6 +29,15 @@ class Expenses:
         else:
             self.time = time
 
+        self.to_user_data()
+
+    def to_user_data(self):
+        cat_val = Expenses.user_data.get(self.cat)
+        if not cat_val:
+            Expenses.user_data[self.cat] = [self]
+        else:
+            cat_val.append(self)
+
     def __str__(self):
         return f"${self.amount}, spent for {self.cat}, on {self.time.strftime('%Y-%m-%d')}"
 
@@ -61,10 +70,10 @@ async def close_keyboard(update: Update, context: CallbackContext):
 async def add_expense(update: Update, context: CallbackContext) -> None:
     logging.info("Command add_expense was triggered")
     keyboard = [
-        [InlineKeyboardButton("food", callback_data="food"),
-         InlineKeyboardButton("health", callback_data="health")],
-        [InlineKeyboardButton("fun", callback_data="fun"),
-         InlineKeyboardButton("other", callback_data="other")]
+        [InlineKeyboardButton("food", callback_data="category_food"),
+         InlineKeyboardButton("health", callback_data="category_health")],
+        [InlineKeyboardButton("fun", callback_data="category_fun"),
+         InlineKeyboardButton("other", callback_data="category_other")]
     ]
     markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Select the expense category:", reply_markup=markup)
@@ -81,11 +90,11 @@ async def button(update: Update, context: CallbackContext) -> None:
 
     await query.message.reply_text(f"Category is '{category}',\n"
                                     "please enter amount: ")
+    await ex_storage(update, context)
 
 
 async def ex_storage(update: Update, context: CallbackContext) -> None:
     logging.info("Command ex_storage was triggered")
-    user_id = update.message.from_user.id
     amount = int(update.message.text)
     category = context.user_data.get("category")
 
@@ -94,8 +103,10 @@ async def ex_storage(update: Update, context: CallbackContext) -> None:
 
 
 async def op_list(update: Update, context: CallbackContext) -> None:
-    for obj in Expenses.user_data:
-        await update.message.reply_text(str(obj))
+    for obj, values in Expenses.user_data.items():
+        await update.message.reply_text(f'{obj}, {values}')
+
+
 async def add_income(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
@@ -108,6 +119,7 @@ def run():
     app.add_handler(CommandHandler("add_income", add_income))
     app.add_handler(CommandHandler("close_keyboard", close_keyboard))
     app.add_handler(CommandHandler("list", op_list))
+    app.add_handler(CallbackQueryHandler(button, pattern='^category_'))
     app.add_handler(CallbackQueryHandler(button))
     app.run_polling()
 
