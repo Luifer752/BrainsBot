@@ -1,25 +1,26 @@
 import logging
+from core.keyboards import inline
+from datetime import datetime
+from aiogram import Bot, Dispatcher, types, executor
+from core.middlewares.settings import settings
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher.filters import Text
+from aiogram.dispatcher.filters.state import StatesGroup, State
 
-from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup,\
-    KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
-
-from telegram.ext import ApplicationBuilder, CallbackContext, \
-    CommandHandler, CallbackQueryHandler, ConversationHandler
-
-
-TOKEN = '6694866011:AAGee_T16mY22-w7QF49MVfE5Zfs09JIGYw'
 
 logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
 )
 
-
+class UserState(StatesGroup):
+    CHOOSE_CAT = State()
+    ENTER_AMOUNT = State
 class Expenses:
 
-    user_data = {"expenses" : [],
-                 "incomes" : []}
+    user_states = {}
+    user_info = {"expenses": [],
+                 "incomes": []}
 
     def __init__(self, amount, cat, time=None):
         self.amount = int(amount)
@@ -29,12 +30,12 @@ class Expenses:
         else:
             self.time = time
 
-        self.to_user_data()
+        self.to_user_info()
 
-    def to_user_data(self):
-        cat_val = Expenses.user_data.get(self.cat)
+    def to_user_info(self):
+        cat_val = Expenses.user_info.get(self.cat)
         if not cat_val:
-            Expenses.user_data[self.cat] = [self]
+            Expenses.user_info[self.cat] = [self]
         else:
             cat_val.append(self)
 
@@ -50,80 +51,78 @@ class Incomes(Expenses):
         return f"${self.amount} received for {self.cat}, on {self.time.strftime('%Y-%m-%d')}"
 
 
-async def start(update: Update, context: CallbackContext) -> None:
-    logging.info("Command start was triggered")
-    keyboard = [['/add_expense', '/add_income',],
-                  ['/list', '/save'],
-                ['/delete_operation', '/stats', '/close_keyboard']]
-    markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False)
-    await update.message.reply_text(
-        "Welcome to BrainsExpenseBot!\n"
-        "Please see below options: ",
-        reply_markup=markup
-    )
+storage = MemoryStorage()
+
+bot = Bot(token=settings.bots.bot_token,
+          parse_mode="HTML")
+
+dp = Dispatcher(bot=bot,
+                storage=storage)
 
 
-async def close_keyboard(update: Update, context: CallbackContext):
-    await update.message.reply_text('Keyboard closed', reply_markup=ReplyKeyboardRemove())
+async def on_startup(message: types.Message):
+    await bot.send_message(settings.bots.admin_id,
+                           text="Launched")
 
 
-async def add_expense(update: Update, context: CallbackContext) -> None:
+async def on_shutdown(message: types.Message):
+    await bot.send_message(settings.bots.admin_id,
+                           text="Game over")
+
+
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    await bot.send_message(chat_id=message.from_user.id,
+                           text=f"Hey {message.from_user.first_name}, see func's below:",
+                           parse_mode="HTML",
+                           reply_markup=inline.rep_kb)
+
+
+@dp.message_handler(commands=['close_keyboard'])
+async def close_keyboard(message: types.Message):
+    await bot.send_message(chat_id=message.from_user.id,
+                           text=f"Keyboard closed, press 'Start' to open again",
+                           reply_markup=inline.ReplyKeyboardRemove()
+                           )
+
+
+@dp.message_handler(commands=['help'])
+async def helper(message: types.Message):
+    await bot.send_message(chat_id=message.from_user.id,
+                           text="HEEEEELLLLLPPP")
+
+
+@dp.callback_query_handler(Text(equals='', ignore_case=True))
+async def cat_callback(callback: types.CallbackQuery):
+    logging.info(f"Command cat_callback was triggered, {callback.data}")
+    cat = callback.data
+    user_id = callback.from_user.id
+    await callback.answer(f"Category is '{cat}',\n"
+                          "please enter amount: ")
+    #await
+
+
+
+@dp.message_handler(commands=['add_expense'])
+async def add_expense(message: types.Message):
     logging.info("Command add_expense was triggered")
-    keyboard = [
-        [InlineKeyboardButton("food", callback_data="category_food"),
-         InlineKeyboardButton("health", callback_data="category_health")],
-        [InlineKeyboardButton("fun", callback_data="category_fun"),
-         InlineKeyboardButton("other", callback_data="category_other")]
-    ]
-    markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Select the expense category:", reply_markup=markup)
+    await State
+    await message.answer(text="Please choose your expense category: ",
+                         reply_markup=inline.in_kb)
 
 
-async def button(update: Update, context: CallbackContext) -> None:
-    logging.info("Command 'button' was triggered")
-    query = update.callback_query
-    logging.info(f"QUERY == {query}")
-    category = query.data
-    await query.answer()
-    user_id = query.from_user.id
+
+async def run():
+
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 
-    await query.message.reply_text(f"Category is '{category}',\n"
-                                    "please enter amount: ")
-    await ex_storage(update, context)
-
-
-async def ex_storage(update: Update, context: CallbackContext) -> None:
-    logging.info("Command ex_storage was triggered")
-    amount = int(update.message.text)
-    category = context.user_data.get("category")
-
-    expense = Expenses(amount - amount*2, category)
-    Expenses.user_data[category].append(expense)
-
-
-async def op_list(update: Update, context: CallbackContext) -> None:
-    for obj, values in Expenses.user_data.items():
-        await update.message.reply_text(f'{obj}, {values}')
-
-
-async def add_income(update: Update, context: CallbackContext) -> None:
-    user_id = update.message.from_user.id
-
-
-def run():
-    app = ApplicationBuilder().token(TOKEN).build()
-    logging.info("Application build successfully!")
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("add_expense", add_expense))
-    app.add_handler(CommandHandler("add_income", add_income))
-    app.add_handler(CommandHandler("close_keyboard", close_keyboard))
-    app.add_handler(CommandHandler("list", op_list))
-    app.add_handler(CallbackQueryHandler(button, pattern='^category_'))
-    app.add_handler(CallbackQueryHandler(button))
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    run()
-
+if __name__ == '__main__':
+    executor.start_polling(dispatcher=dp,
+                           skip_updates=True,
+                           on_startup=on_startup,
+                           on_shutdown=on_shutdown
+                           )
