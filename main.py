@@ -17,7 +17,7 @@ logging.basicConfig(
 class UserState(StatesGroup):
     CHOOSE_CAT = State()
     ENTER_AMOUNT = State()
-
+    ENTER_INCOME = State()
 
 class Expenses:
 
@@ -75,14 +75,18 @@ async def on_shutdown(message: types.Message) -> None:
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message) -> None:
+    logging.info("Command start was triggered")
     await bot.send_message(chat_id=message.from_user.id,
-                           text=f"Hey {message.from_user.first_name}, see func's below:",
+                           text=f"Hey {message.from_user.first_name}, "
+                                f"welcome to Expense Bot, \n"
+                                f"see func's below:",
                            parse_mode="HTML",
                            reply_markup=inline.rep_kb)
 
 
 @dp.message_handler(commands=['close_keyboard'])
 async def close_keyboard(message: types.Message) -> None:
+    logging.info("Command close_keyboard was triggered")
     await bot.send_message(chat_id=message.from_user.id,
                            text=f"Keyboard closed, press 'Start' to open again",
                            reply_markup=inline.ReplyKeyboardRemove()
@@ -105,6 +109,7 @@ async def add_expense(message: types.Message) -> None:
 
 @dp.callback_query_handler(lambda query: query.data in ["food", "health", "fun", "other"], state=UserState.CHOOSE_CAT)
 async def cat_amount(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info("Command cat_amount was triggered")
     async with state.proxy() as data:
         data['chosen_cat'] = callback_query.data
     await UserState.ENTER_AMOUNT.set()
@@ -115,6 +120,7 @@ async def cat_amount(callback_query: types.CallbackQuery, state: FSMContext):
 
 @dp.message_handler(state=UserState.ENTER_AMOUNT)
 async def save_expense(message: types.Message, state: FSMContext) -> None:
+    logging.info("Command save_expense was triggered")
     async with state.proxy() as data:
         cat = data['chosen_cat']
     amount = message.text
@@ -126,14 +132,53 @@ async def save_expense(message: types.Message, state: FSMContext) -> None:
 
 @dp.message_handler(commands=['list'])
 async def op_list(message: types.Message) -> None:
+    logging.info("Command op_list was triggered")
     expenses = "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("expenses", []))])
     incomes= "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("incomes", []))])
     await message.answer(f"{expenses} \n"
                          f"{incomes}")
 
 
+
+@dp.message_handler(commands=['delete_operation'])
+async def delete_op(message: types.Message) -> None:
+    pass
+
+
 def state_cancel() -> inline.ReplyKeyboardMarkup:
+    logging.info("Command add_expense was triggered")
     return inline.ReplyKeyboardMarkup(resize_keyboard=True).add(inline.KeyboardButton('/cancel'))
+
+
+@dp.message_handler(commands=['add_income'])
+async def add_income_start(message: types.Message) -> None:
+    await UserState.ENTER_INCOME.set()
+    await message.answer("Please enter the income details in the following format:\n"
+                         "<amount> <category> <date>\n"
+                         "For example: 100 food 2023-08-30")
+
+
+@dp.message_handler(state=UserState.ENTER_INCOME)
+async def add_income_process(message: types.Message, state: FSMContext) -> None:
+    income_details = message.text.split()
+    if len(income_details) < 3:
+        await bot.send_message(message.from_user.id, "Invalid input format. Please use '<amount> <category> <date>'.")
+        return
+
+    amount = income_details[0]
+    cat = income_details[1]
+    date_str = income_details[2]
+
+    try:
+        time = datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        await bot.send_message(message.from_user.id, "Invalid date format. Please use '%Y-%m-%d' format.")
+        return
+
+    income = Incomes(amount, cat, time)
+    Expenses.user_info["incomes"].append(income)
+    await bot.send_message(message.from_user.id, f"Income: {income} was successfully added!")
+    await state.finish()
 
 
 async def run():
