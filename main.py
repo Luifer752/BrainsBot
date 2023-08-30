@@ -6,16 +6,19 @@ from core.middlewares.settings import settings
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import StatesGroup, State
-
+from aiogram.dispatcher import FSMContext
 
 logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
 )
 
+
 class UserState(StatesGroup):
     CHOOSE_CAT = State()
-    ENTER_AMOUNT = State
+    ENTER_AMOUNT = State()
+
+
 class Expenses:
 
     user_states = {}
@@ -25,7 +28,7 @@ class Expenses:
     def __init__(self, amount, cat, time=None):
         self.amount = int(amount)
         self.cat = cat
-        if time:
+        if not time:
             self.time = datetime.now()
         else:
             self.time = time
@@ -60,18 +63,18 @@ dp = Dispatcher(bot=bot,
                 storage=storage)
 
 
-async def on_startup(message: types.Message):
+async def on_startup(message: types.Message) -> None:
     await bot.send_message(settings.bots.admin_id,
                            text="Launched")
 
 
-async def on_shutdown(message: types.Message):
+async def on_shutdown(message: types.Message) -> None:
     await bot.send_message(settings.bots.admin_id,
                            text="Game over")
 
 
 @dp.message_handler(commands=['start'])
-async def start(message: types.Message):
+async def start(message: types.Message) -> None:
     await bot.send_message(chat_id=message.from_user.id,
                            text=f"Hey {message.from_user.first_name}, see func's below:",
                            parse_mode="HTML",
@@ -79,7 +82,7 @@ async def start(message: types.Message):
 
 
 @dp.message_handler(commands=['close_keyboard'])
-async def close_keyboard(message: types.Message):
+async def close_keyboard(message: types.Message) -> None:
     await bot.send_message(chat_id=message.from_user.id,
                            text=f"Keyboard closed, press 'Start' to open again",
                            reply_markup=inline.ReplyKeyboardRemove()
@@ -87,29 +90,50 @@ async def close_keyboard(message: types.Message):
 
 
 @dp.message_handler(commands=['help'])
-async def helper(message: types.Message):
+async def helper(message: types.Message) -> None:
     await bot.send_message(chat_id=message.from_user.id,
                            text="HEEEEELLLLLPPP")
 
 
-@dp.callback_query_handler(Text(equals='', ignore_case=True))
-async def cat_callback(callback: types.CallbackQuery):
-    logging.info(f"Command cat_callback was triggered, {callback.data}")
-    cat = callback.data
-    user_id = callback.from_user.id
-    await callback.answer(f"Category is '{cat}',\n"
-                          "please enter amount: ")
-    #await
-
-
-
-@dp.message_handler(commands=['add_expense'])
-async def add_expense(message: types.Message):
+@dp.message_handler(Text(equals='/add_expense', ignore_case=True))
+async def add_expense(message: types.Message) -> None:
     logging.info("Command add_expense was triggered")
-    await State
+    await UserState.CHOOSE_CAT.set()
     await message.answer(text="Please choose your expense category: ",
                          reply_markup=inline.in_kb)
 
+
+@dp.callback_query_handler(lambda query: query.data in ["food", "health", "fun", "other"], state=UserState.CHOOSE_CAT)
+async def cat_amount(callback_query: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        data['chosen_cat'] = callback_query.data
+    await UserState.ENTER_AMOUNT.set()
+    await bot.send_message(callback_query.from_user.id,
+                           f"Category is '{callback_query.data}',\n"
+                           f"please enter amount: ")
+
+
+@dp.message_handler(state=UserState.ENTER_AMOUNT)
+async def save_expense(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        cat = data['chosen_cat']
+    amount = message.text
+    expense = Expenses(amount, cat)
+    Expenses.user_info["expenses"].append(expense)
+    await message.answer(str(expense))
+    await state.finish()
+
+
+@dp.message_handler(commands=['list'])
+async def op_list(message: types.Message) -> None:
+    expenses = "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("expenses", []))])
+    incomes= "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("incomes", []))])
+    await message.answer(f"{expenses} \n"
+                         f"{incomes}")
+
+
+def state_cancel() -> inline.ReplyKeyboardMarkup:
+    return inline.ReplyKeyboardMarkup(resize_keyboard=True).add(inline.KeyboardButton('/cancel'))
 
 
 async def run():

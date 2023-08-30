@@ -1,12 +1,21 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, \
-    ReplyKeyboardMarkup, ReplyKeyboardRemove
+    ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 
 keyboard = [['/add_expense', '/add_income',],
                   ['/list', '/save'],
                 ['/delete_operation', '/stats', '/close_keyboard']]
 
 rep_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 rep_kb.add("/help")
+rep_kb.add("/add_expense")
+rep_kb.add("/add_income")
+rep_kb.add("/list")
+rep_kb.add("/save")
+rep_kb.add("/delete_operation")
+rep_kb.add("/stats")
+rep_kb.add("/close_keyboard")
+
 
 in_kb = InlineKeyboardMarkup(row_width=2)
 
