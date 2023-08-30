@@ -135,9 +135,10 @@ async def op_list(message: types.Message) -> None:
     logging.info("Command op_list was triggered")
     expenses = "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("expenses", []))])
     incomes= "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("incomes", []))])
-    await message.answer(f"{expenses} \n"
+    await message.answer(f"Expenses: \n"
+                         f"{expenses} \n"
+                         f"Incomes: \n"
                          f"{incomes}")
-
 
 
 @dp.message_handler(commands=['delete_operation'])
@@ -152,33 +153,38 @@ def state_cancel() -> inline.ReplyKeyboardMarkup:
 
 @dp.message_handler(commands=['add_income'])
 async def add_income_start(message: types.Message) -> None:
+    logging.info(f"Command add_expense was ")
     await UserState.ENTER_INCOME.set()
     await message.answer("Please enter the income details in the following format:\n"
-                         "<amount> <category> <date>\n"
+                         "amount category date \n"
                          "For example: 100 food 2023-08-30")
 
 
 @dp.message_handler(state=UserState.ENTER_INCOME)
 async def add_income_process(message: types.Message, state: FSMContext) -> None:
     income_details = message.text.split()
-    if len(income_details) < 3:
-        await bot.send_message(message.from_user.id, "Invalid input format. Please use '<amount> <category> <date>'.")
+    if len(income_details) < 2:
+        await message.answer("Invalid input format. Please use 'amount category [date]'.")
         return
 
     amount = income_details[0]
     cat = income_details[1]
-    date_str = income_details[2]
 
-    try:
-        time = datetime.strptime(date_str, '%Y-%m-%d')
-    except ValueError:
-        await bot.send_message(message.from_user.id, "Invalid date format. Please use '%Y-%m-%d' format.")
-        return
+    if len(income_details) > 2:
+        date_str = income_details[2]
+        try:
+            time = datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            await message.answer("Invalid date format. Please use '%Y-%m-%d' format.")
+            return
+    else:
+        time = datetime.now()
 
     income = Incomes(amount, cat, time)
     Expenses.user_info["incomes"].append(income)
-    await bot.send_message(message.from_user.id, f"Income: {income} was successfully added!")
+    await message.answer(f"Income: {income} was successfully added!")
     await state.finish()
+
 
 
 async def run():
