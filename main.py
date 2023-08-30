@@ -18,6 +18,10 @@ class UserState(StatesGroup):
     CHOOSE_CAT = State()
     ENTER_AMOUNT = State()
     ENTER_INCOME = State()
+    DELETE_OP = State()
+    DELETE_ITEM = State()
+    CONFIRM_DELETE = State()
+
 
 class Expenses:
 
@@ -135,19 +139,60 @@ async def op_list(message: types.Message) -> None:
     logging.info("Command op_list was triggered")
     expenses = "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("expenses", []))])
     incomes= "\n".join([f"{i + 1}. {str(t)}" for i, t in enumerate(Expenses.user_info.get("incomes", []))])
-    await message.answer(f"Expenses: \n"
+    await UserState.DELETE_OP.set()
+    await message.answer(text=f"Expenses: \n"
                          f"{expenses} \n"
                          f"Incomes: \n"
-                         f"{incomes}")
+                         f"{incomes}",
+                         reply_markup=inline.del_button)
 
 
-@dp.message_handler(commands=['delete_operation'])
-async def delete_op(message: types.Message) -> None:
-    pass
+@dp.callback_query_handler(lambda query: query.data == "DELETE OPERATION", state=UserState.DELETE_OP)
+async def ask_item_number(callback_query: types.CallbackQuery, state: FSMContext):
+    await UserState.DELETE_ITEM.set()
+    await bot.send_message(callback_query.from_user.id, "Please enter the item number you want to delete:")
+
+
+@dp.message_handler(lambda message: message.text.isdigit(), state=UserState.DELETE_ITEM)
+async def process_item_number(message: types.Message, state: FSMContext):
+    item_number = int(message.text)
+    expenses = Expenses.user_info.get("expenses", [])
+    incomes = Expenses.user_info.get("incomes", [])
+
+    if 1 <= item_number <= len(expenses) or 1 <= item_number <= len(incomes):
+        await bot.send_message(message.from_user.id, f"Are you sure you want to delete item {item_number}?\n"
+                                                     f"Reply '+' to confirm, or '-' to cancel.")
+        await UserState.CONFIRM_DELETE.set()
+        await state.update_data(item_number=item_number)
+    else:
+        await bot.send_message(message.from_user.id, "Invalid item number. Please enter a valid number:")
+
+
+@dp.message_handler(Text(equals='yes', ignore_case=True), state=UserState.CONFIRM_DELETE)
+async def confirm_delete(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        item_number = data['item_number']
+
+    expenses = Expenses.user_info.get("expenses", [])
+    incomes = Expenses.user_info.get("incomes", [])
+
+    if 1 <= item_number <= len(expenses):
+        deleted_item = expenses.pop(item_number - 1)
+    elif 1 <= item_number <= len(incomes):
+        deleted_item = incomes.pop(item_number - 1)
+
+    await bot.send_message(message.from_user.id, f"Deleted: {deleted_item}")
+    await state.finish()
+
+
+@dp.message_handler(Text(equals='no', ignore_case=True), state=UserState.CONFIRM_DELETE)
+async def cancel_delete(message: types.Message, state: FSMContext):
+    await bot.send_message(message.from_user.id, "Deletion canceled.")
+    await state.finish()
 
 
 def state_cancel() -> inline.ReplyKeyboardMarkup:
-    logging.info("Command add_expense was triggered")
+    logging.info("Command state_cancel was triggered")
     return inline.ReplyKeyboardMarkup(resize_keyboard=True).add(inline.KeyboardButton('/cancel'))
 
 
@@ -184,7 +229,6 @@ async def add_income_process(message: types.Message, state: FSMContext) -> None:
     Expenses.user_info["incomes"].append(income)
     await message.answer(f"Income: {income} was successfully added!")
     await state.finish()
-
 
 
 async def run():

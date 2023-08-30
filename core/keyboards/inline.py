@@ -26,6 +26,12 @@ in_keyboard = {
         'b4': InlineKeyboardButton(text="other", callback_data="other")
 }
 
+
+
+del_button = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton("Delete Operation", callback_data="DELETE OPERATION")]
+])
+
 in_kb.add(in_keyboard['b1'], in_keyboard['b2'], in_keyboard['b3'], in_keyboard['b4'])
 
 select_cat = InlineKeyboardMarkup(inline_keyboard=[
