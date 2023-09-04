@@ -1,12 +1,15 @@
 import logging
 from core.keyboards import inline
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, executor
 from core.middlewares.settings import settings
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import StatesGroup, State
 from aiogram.dispatcher import FSMContext
+import asyncpg
+import json
+
 
 logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -66,6 +69,8 @@ bot = Bot(token=settings.bots.bot_token,
 dp = Dispatcher(bot=bot,
                 storage=storage)
 
+'''ON and OFF func's'''
+
 
 async def on_startup(message: types.Message) -> None:
     await bot.send_message(settings.bots.admin_id,
@@ -75,6 +80,9 @@ async def on_startup(message: types.Message) -> None:
 async def on_shutdown(message: types.Message) -> None:
     await bot.send_message(settings.bots.admin_id,
                            text="Game over")
+
+
+'''Start, buttons creation'''
 
 
 @dp.message_handler(commands=['start'])
@@ -87,6 +95,8 @@ async def start(message: types.Message) -> None:
                            parse_mode="HTML",
                            reply_markup=inline.rep_kb)
 
+
+"""Minor func's"""
 
 @dp.message_handler(commands=['close_keyboard'])
 async def close_keyboard(message: types.Message) -> None:
@@ -102,6 +112,7 @@ async def helper(message: types.Message) -> None:
     await bot.send_message(chat_id=message.from_user.id,
                            text="HEEEEELLLLLPPP")
 
+"""EXPENSE"""
 
 @dp.message_handler(Text(equals='/add_expense', ignore_case=True))
 async def add_expense(message: types.Message) -> None:
@@ -132,6 +143,9 @@ async def save_expense(message: types.Message, state: FSMContext) -> None:
     Expenses.user_info["expenses"].append(expense)
     await message.answer(str(expense))
     await state.finish()
+
+
+"""LIST AND DELETE"""
 
 
 @dp.message_handler(commands=['list'])
@@ -195,6 +209,7 @@ def state_cancel() -> inline.ReplyKeyboardMarkup:
     logging.info("Command state_cancel was triggered")
     return inline.ReplyKeyboardMarkup(resize_keyboard=True).add(inline.KeyboardButton('/cancel'))
 
+'''Income'''
 
 @dp.message_handler(commands=['add_income'])
 async def add_income_start(message: types.Message) -> None:
@@ -231,6 +246,82 @@ async def add_income_process(message: types.Message, state: FSMContext) -> None:
     await state.finish()
 
 
+'''Stats'''
+
+def get_stats_for_period(period):
+    today = datetime.today()
+    if period == "day":
+        start_date = today
+    elif period == "week":
+        start_date = today - timedelta(days=7)
+    elif period == "month":
+        start_date = today - timedelta(days=30)
+    else:
+        return "Invalid period. Please use 'day', 'week', or 'month'."
+
+    expenses = [expense for expense in Expenses.user_info["expenses"] if start_date <= expense.time <= today]
+    incomes = [income for income in Expenses.user_info["incomes"] if start_date <= income.time <= today]
+
+    total_expenses = sum(expense.amount for expense in expenses)
+    total_incomes = sum(income.amount for income in incomes)
+
+    result = f"Stats for the last {period}:\n"
+    result += f"Total Expenses: ${total_expenses}\n"
+    result += f"Total Incomes: ${total_incomes}"
+
+    return result
+
+
+async def get_statistics(message: types.Message) -> None:
+    period = message.text.split()[1].lower()
+    stats = get_stats_for_period(period)
+    await message.answer(stats)
+
+
+'''DB stuff'''
+
+db_config = {
+    "host": "localhost",
+    "port": "5432",
+    "user": "postgres",
+    "password": "1",
+    "database": "BBotDB"
+}
+
+
+@dp.message_handler(commands=['save'])
+async def save_user_data_command(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    user_data_to_save = Expenses.user_info
+    await save_user_data(user_id, user_data_to_save)
+    await message.answer("User data has been saved.")
+
+
+async def save_user_data(user_id, user_data):
+    try:
+        user_data_json = json.dumps(user_data)
+
+        conn = await aiopg.connect(database='your_database', user='your_user', password='your_password', host='your_host')
+        cursor = await conn.cursor()
+
+        await cursor.execute("INSERT INTO user_data (user_id, data) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET data = %s", (user_id, user_data_json, user_data_json))
+
+        await conn.commit()
+        await cursor.close()
+        conn.close()
+
+    except Exception as e:
+        print(f"Error saving user data: {e}")
+
+
+@dp.message_handler(commands=['load'])
+async def load_user_data(user_id):
+    connection = await asyncpg.connect(**db_config)
+    result = await connection.fetchrow("SELECT data FROM user_info WHERE user_id = $1", user_id)
+    await connection.close()
+    return json.loads(result["data"]) if result else {}
+
+
 async def run():
 
     try:
@@ -245,3 +336,4 @@ if __name__ == '__main__':
                            on_startup=on_startup,
                            on_shutdown=on_shutdown
                            )
+
