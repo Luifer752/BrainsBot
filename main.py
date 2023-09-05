@@ -42,6 +42,13 @@ class Expenses:
 
         self.to_user_info()
 
+    def to_dict(self):
+        return {
+            "amount": self.amount,
+            "cat": self.cat,
+            "time": self.time.strftime('%Y-%m-%d')
+        }
+
     def to_user_info(self):
         cat_val = Expenses.user_info.get(self.cat)
         if not cat_val:
@@ -182,7 +189,7 @@ async def process_item_number(message: types.Message, state: FSMContext):
         await bot.send_message(message.from_user.id, "Invalid item number. Please enter a valid number:")
 
 
-@dp.message_handler(Text(equals='yes', ignore_case=True), state=UserState.CONFIRM_DELETE)
+@dp.message_handler(Text(equals='+', ignore_case=True), state=UserState.CONFIRM_DELETE)
 async def confirm_delete(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         item_number = data['item_number']
@@ -248,6 +255,7 @@ async def add_income_process(message: types.Message, state: FSMContext) -> None:
 
 '''Stats'''
 
+
 def get_stats_for_period(period):
     today = datetime.today()
     if period == "day":
@@ -284,8 +292,8 @@ db_config = {
     "host": "localhost",
     "port": "5432",
     "user": "postgres",
-    "password": "1",
-    "database": "BBotDB"
+    "password": "udashkin1",
+    "database": "testdb"
 }
 
 
@@ -299,27 +307,34 @@ async def save_user_data_command(message: types.Message, state: FSMContext):
 
 async def save_user_data(user_id, user_data):
     try:
-        user_data_json = json.dumps(user_data)
+        user_data_dict = {
+            "expenses": [expense.to_dict() for expense in user_data.get("expenses", [])],
+            "incomes": [income.to_dict() for income in user_data.get("incomes", [])]
+        }
 
-        conn = await aiopg.connect(database='your_database', user='your_user', password='your_password', host='your_host')
-        cursor = await conn.cursor()
+        user_data_json = json.dumps(user_data_dict)
 
-        await cursor.execute("INSERT INTO user_data (user_id, data) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET data = %s", (user_id, user_data_json, user_data_json))
+        conn = await asyncpg.connect(**db_config)
+        await conn.execute(
+            "INSERT INTO user_info (user_id, data) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET data = $2",
+            user_id, user_data_json)
 
-        await conn.commit()
-        await cursor.close()
-        conn.close()
-
+        await conn.close()
     except Exception as e:
         print(f"Error saving user data: {e}")
 
 
 @dp.message_handler(commands=['load'])
 async def load_user_data(user_id):
-    connection = await asyncpg.connect(**db_config)
-    result = await connection.fetchrow("SELECT data FROM user_info WHERE user_id = $1", user_id)
-    await connection.close()
-    return json.loads(result["data"]) if result else {}
+    try:
+        conn = await asyncpg.connect(**db_config)
+        result = await conn.fetchrow("SELECT data FROM user_info WHERE user_id = $1", user_id)
+        await conn.close()
+
+        return json.loads(result["data"]) if result else {}
+    except Exception as e:
+        print(f"Error loading user data: {e}")
+        return {}
 
 
 async def run():
