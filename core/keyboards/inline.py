@@ -2,8 +2,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, \
     ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 
 keyboard = [['/add_expense', '/add_income',],
-                  ['/list', '/save', '/load'],
-                ['/delete_operation', '/close_keyboard'],
+                  ['/save', '/load'],
+                ['/list', '/close_keyboard'],
             ['/stats day', '/stats week', '/stats month']]
 
 rep_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)

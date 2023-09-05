@@ -105,6 +105,7 @@ async def start(message: types.Message) -> None:
 
 """Minor func's"""
 
+
 @dp.message_handler(commands=['close_keyboard'])
 async def close_keyboard(message: types.Message) -> None:
     logging.info("Command close_keyboard was triggered")
@@ -120,6 +121,7 @@ async def helper(message: types.Message) -> None:
                            text="HEEEEELLLLLPPP")
 
 """EXPENSE"""
+
 
 @dp.message_handler(Text(equals='/add_expense', ignore_case=True))
 async def add_expense(message: types.Message) -> None:
@@ -216,7 +218,9 @@ def state_cancel() -> inline.ReplyKeyboardMarkup:
     logging.info("Command state_cancel was triggered")
     return inline.ReplyKeyboardMarkup(resize_keyboard=True).add(inline.KeyboardButton('/cancel'))
 
+
 '''Income'''
+
 
 @dp.message_handler(commands=['add_income'])
 async def add_income_start(message: types.Message) -> None:
@@ -280,6 +284,7 @@ def get_stats_for_period(period):
     return result
 
 
+@dp.message_handler(commands=['stats'])
 async def get_statistics(message: types.Message) -> None:
     period = message.text.split()[1].lower()
     stats = get_stats_for_period(period)
